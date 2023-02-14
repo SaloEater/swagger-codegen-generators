@@ -10,6 +10,7 @@ import io.swagger.codegen.v3.CodegenSecurity;
 import io.swagger.codegen.v3.CodegenType;
 import io.swagger.codegen.v3.SupportingFile;
 import io.swagger.codegen.v3.generators.DefaultCodegenConfig;
+import io.swagger.codegen.v3.generators.util.OpenAPIUtil;
 import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.BooleanSchema;
 import io.swagger.v3.oas.models.media.DateSchema;
@@ -110,7 +111,7 @@ public class PhpClientCodegen extends DefaultCodegenConfig {
 
         instantiationTypes.put("array", "array");
         instantiationTypes.put("map", "map");
-        
+
         // provide primitives to mustache template
         List<String> sortedLanguageSpecificPrimitives= new ArrayList<String>(languageSpecificPrimitives);
         Collections.sort(sortedLanguageSpecificPrimitives);
@@ -131,7 +132,7 @@ public class PhpClientCodegen extends DefaultCodegenConfig {
         typeMapping.put("Date", "\\DateTime");
         typeMapping.put("DateTime", "\\DateTime");
         typeMapping.put("file", "\\SplFileObject");
-        typeMapping.put("map", "map");
+        typeMapping.put("map", "array");
         typeMapping.put("array", "array");
         typeMapping.put("list", "array");
         typeMapping.put("object", "object");
@@ -381,7 +382,7 @@ public class PhpClientCodegen extends DefaultCodegenConfig {
                 LOGGER.warn(arraySchema.getName() + "(array property) does not have a proper inner type defined");
                 return "";
             }
-            return getTypeDeclaration(inner) + "[]";
+            return String.format("array<%s>", getTypeDeclaration(inner));
         } else if (propertySchema instanceof MapSchema  && hasSchemaProperties(propertySchema)) {
             MapSchema mapSchema = (MapSchema) propertySchema;
             Schema inner = (Schema) mapSchema.getAdditionalProperties();
@@ -389,14 +390,17 @@ public class PhpClientCodegen extends DefaultCodegenConfig {
                 LOGGER.warn(propertySchema.getName() + "(map property) does not have a proper inner type defined");
                 return "";
             }
-            return getSchemaType(propertySchema) + "[string," + getTypeDeclaration(inner) + "]";
+            return String.format("%s<string, %s>", getSchemaType(propertySchema), getTypeDeclaration(inner));
         } else if (propertySchema instanceof MapSchema && hasTrueAdditionalProperties(propertySchema)) {
             Schema inner = new ObjectSchema();
-            return getSchemaType(propertySchema) + "[string," + getTypeDeclaration(inner) + "]";
+            return String.format("%s<string, %s>", getSchemaType(propertySchema), getTypeDeclaration(inner));
         } else if (StringUtils.isNotBlank(propertySchema.get$ref())) {
-            String type = super.getTypeDeclaration(propertySchema);
-            return (!languageSpecificPrimitives.contains(type))
-                    ? "\\" + modelPackage + "\\" + type : type;
+            final String simpleRefName = OpenAPIUtil.getSimpleRef(propertySchema.get$ref());
+            final Schema refSchema = OpenAPIUtil.getSchemaFromName(simpleRefName, this.openAPI);
+            if (refSchema instanceof ArraySchema || refSchema instanceof MapSchema) {
+                refSchema.addExtension("x-schema-name", simpleRefName);
+                return getTypeDeclaration(refSchema);
+            }
         }
 
         return super.getTypeDeclaration(propertySchema);
